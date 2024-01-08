@@ -1,3 +1,5 @@
+import json
+import os
 import re
 import urllib.parse
 from logging import getLevelName, getLogger
@@ -12,6 +14,11 @@ VERSION = "1.2.0"
 class MobFot:
     BASE_URL = "https://www.fotmob.com/api"
     LOGGER = getLogger(__name__)
+    XDG_DATA = os.getenv("XDG_DATA_HOME")
+    DATA_FOLDER = "/mobfot/"
+    if not XDG_DATA:
+        raise Exception("XDG_DATA_HOME environment variable is not set.")
+    DATA_PATH = XDG_DATA + DATA_FOLDER
 
     def __init__(
         self, proxies: Optional[dict] = None, logging_level: Optional[str] = "WARNING"
@@ -42,6 +49,32 @@ class MobFot:
         self.search_url = f"{self.BASE_URL}/searchData?"
         self.tv_listing_url = f"{self.BASE_URL}/tvlisting?"
         self.tv_listings_url = f"{self.BASE_URL}/tvlistings?"
+        self._create_data_folder_if_not_exists()
+
+    def _create_data_folder_if_not_exists(self):
+        try:
+            if not os.path.exists(self.DATA_PATH):
+                os.makedirs(self.DATA_PATH)
+                print(f"Folder '{self.DATA_PATH}' created successfully!")
+        except Exception as e:
+            print(f"Error creating folder: {str(e)}")
+            raise SystemExit
+
+    def _match_is_finished(self, match) -> bool:
+        return (
+            match["header"]["status"]["finished"]
+            and match["header"]["status"]["started"]
+        )
+
+    def _parse_filepath(self, match_id):
+        return self.DATA_PATH + str(match_id) + ".json"
+
+    def _load_if_file_exist(self, filepath: str):
+        if os.path.isfile(filepath):
+            with open(filepath) as file:
+                return json.load(file)
+        else:
+            return None
 
     def _check_date(self, date: str) -> Union[re.Match, None]:
         """Makes sure dates are formatted correctly YYYY-MM-DD
@@ -140,7 +173,7 @@ class MobFot:
         url = f"{self.player_url}id={id}"
         return self._execute_query(url)
 
-    def get_match_details(self, match_id: int) -> dict:
+    def get_match_details(self, match_id: int, no_cache: bool = False) -> dict:
         """Gets information about a given match
 
         Args:
@@ -150,7 +183,19 @@ class MobFot:
             dict: The response from the API
         """
         url = f"{self.match_details_url}matchId={match_id}"
-        return self._execute_query(url)
+        filepath = self._parse_filepath(match_id)
+        match_from_cache = self._load_if_file_exist(filepath)
+        if not no_cache and match_from_cache:
+            return match_from_cache
+        else:
+            match_details = self._execute_query(url)
+            if self._match_is_finished(match_details):
+                try:
+                    with open(filepath, "w") as file:
+                        file.write(json.dumps(match_details))
+                except Exception as e:
+                    print(f"Error writing to file: {str(e)}")
+            return match_details
 
     def get_match_tv_listing(self, match_id: int, country_code: str = "GB") -> dict:
         """Gets the TV listing for a given match
