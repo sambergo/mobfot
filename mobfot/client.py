@@ -14,11 +14,6 @@ VERSION = "1.2.0"
 class MobFot:
     BASE_URL = "https://www.fotmob.com/api"
     LOGGER = getLogger(__name__)
-    XDG_DATA = os.getenv("XDG_DATA_HOME")
-    DATA_FOLDER = "/mobfot/"
-    if not XDG_DATA:
-        raise Exception("XDG_DATA_HOME environment variable is not set.")
-    DATA_PATH = XDG_DATA + DATA_FOLDER
 
     def __init__(
         self, proxies: Optional[dict] = None, logging_level: Optional[str] = "WARNING"
@@ -49,7 +44,21 @@ class MobFot:
         self.search_url = f"{self.BASE_URL}/searchData?"
         self.tv_listing_url = f"{self.BASE_URL}/tvlisting?"
         self.tv_listings_url = f"{self.BASE_URL}/tvlistings?"
+        self.DATA_PATH = self._get_data_path()
         self._create_data_folder_if_not_exists()
+
+    def _get_data_path(self):
+        if os.name == "nt":  # Windows
+            app_data_folder = os.path.join(os.environ["APPDATA"], "mobfot\\")
+            return app_data_folder
+        elif os.name == "posix":  # Linux or macOS
+            xdg_data = os.getenv("XDG_DATA_HOME")
+            data_folder = "/mobfot/"
+            if not xdg_data:
+                raise Exception("XDG_DATA_HOME environment variable is not set.")
+            return xdg_data + data_folder
+        else:
+            raise NotImplementedError("Unsupported operating system")
 
     def _create_data_folder_if_not_exists(self):
         try:
